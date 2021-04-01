@@ -40,30 +40,28 @@ class CLAMS:
         self.serial = Serial(port=com_port, timeout=timeout)
         self.station_address = station_address
 
-
     def read_mm(self) -> int:
         """
         Read raw distance/level reading (in mm, unsigned)
 
         Register 30300
         """
-        function_code = 0x04
-        register = 30300 - 30001 # Modbus specification offset
+        fn_code = 0x04
+        register = 30300 - 30001  # Modbus specification offset
 
-        rx_message = self.message(struct.pack(">BBHH", self.station_address, function_code, register, 1))
+        tx_message = struct.pack(">BBHH", self.station_address, fn_code, register, 1)
+        rx_message = self.message(tx_message)
         return int.from_bytes(rx_message[3:5], byteorder="big")
-
 
     def message(self, tx_message: bytes, read_byte_length: int = 7, retry: int = 10) -> bytes:
         """
         Sign Tx and send message
         """
-        def send_recieve(): 
+        def send_recieve():
             self.serial.write(tx_message + CLAMS.crc16(tx_message))
             time.sleep(300e-3)  # Sleep for 300ms per MNU specification
             rx_packet = self.serial.read(size=read_byte_length)
             return rx_packet[:-2], rx_packet[-2:]
-
 
         while retry:
             rx_message, rx_crc = send_recieve()
@@ -71,7 +69,6 @@ class CLAMS:
                 return rx_message
             retry -= 1
         raise AssertionError(f"Reply message failed CRC: {(rx_message + rx_crc).hex().upper()}")
-
 
     @classmethod
     def crc16(cls, message: bytes) -> bytes:
