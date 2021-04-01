@@ -1,5 +1,5 @@
 """
-Contactless Level Acquisition and Monitoring System, C.L.A.M.S
+Contactless Level Acquisition and Monitoring System, C.L.A.M.S.
 Missouri Science and Technology EE/CpE Senior Design 2021
 
 Modbus Ultrasonic Level Sensor, MNU-3434-C6
