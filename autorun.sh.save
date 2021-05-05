@@ -1,0 +1,10 @@
+#!/bin/sh
+/home/pi/clams/.env/bin/python3 /home/pi/clams/main.py
+/home/pi/clams/ngrok http -region=us -hostname=jordancreek.clams.dev 3000
+/usr/bin/chromium-browser --app=http://localhost:3000/d/RJF8w-mgk/clams?orgId=1&refresh=1s&kiosk
+  --kiosk
+  --noerrdialogs
+  --disable-session-crashed-bubble
+  --disable-infobars
+  --check-for-update-interval=604800
+  --disable-pinch

@@ -402,6 +402,7 @@ class ModBusSerialClient:
         self, reg, cnt=1, slave=0x1F
     ):  # slave=0~0xFF, parm=0~0xFFFF,  val=0~65535
         self.Serial.write(structCrc16(struct.pack(">BBHH", slave, 0x03, reg, 1)))
+        print(self.Serial.read(7))
         return struct.unpack_from(
             ">" + cnt * "H", self.rxPacket(self.Serial.read(7), 0x83), 3
         )
@@ -431,9 +432,9 @@ class ModBusSerialClient:
     def read_sReg(
         self, reg, cnt=1, slave=0x1F
     ):  # slave=0~0xFF, parm=0~0xFFFF, val=-32767~32768
-        self.Serial.write(structCrc16(struct.pack(">BBHH", slave, 0x03, reg, 1)))
+        self.Serial.write(structCrc16(struct.pack(">BBHH", slave, 0x04, reg, 1)))
         return struct.unpack_from(
-            ">" + cnt * "h", self.rxPacket(self.Serial.read(7), 0x83), 3
+            ">" + cnt * "h", self.rxPacket(self.Serial.read(7), 0x84), 3
         )
 
 

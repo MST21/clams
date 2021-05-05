@@ -29,6 +29,9 @@ Function code 4 (read input registers)
 
 import struct
 import time
+
+from prometheus_client import Gauge, start_http_server
+from scipy import interpolate
 from serial import Serial
 
 
@@ -36,39 +39,58 @@ class CLAMS:
     station_address: int
     com_port: str
 
-    def __init__(self, com_port, station_address=0x1, timeout=1) -> None:
+    def __init__(self, com_port, station_name, station_address=0x1, timeout=1) -> None:
         self.serial = Serial(port=com_port, timeout=timeout)
+        self.station_name = station_name
         self.station_address = station_address
 
-    def read_mm(self) -> int:
+    def read_water_level_mm(self) -> int:
         """
-        Read raw distance/level reading (in mm, unsigned)
+        Read raw distance (mm, unsigned) and return delta
 
         Register 30300
         """
         fn_code = 0x04
-        register = 30300 - 30001  # Modbus specification offset
+        register = 30300 - 30001  # Target register - Modbus specification offset
 
         tx_message = struct.pack(">BBHH", self.station_address, fn_code, register, 1)
-        rx_message = self.message(tx_message)
-        return int.from_bytes(rx_message[3:5], byteorder="big")
+        rx_message = self.send_recieve(tx_message)
 
-    def message(self, tx_message: bytes, read_byte_length: int = 7, retry: int = 10) -> bytes:
+        water_level_mm = int.from_bytes(rx_message[3:5], byteorder="big")
+        return water_level_mm
+
+    def read_water_level_calculated(self) -> int:
         """
-        Sign Tx and send message
+        Read raw calculated distance (in, unsigned) and return delta
+
+        Registers 30303-30304
         """
-        def send_recieve():
+        fn_code = 0x04
+        start_register = 30303 - 30001  # Target register - Modbus specification offset
+        read_length = 2
+
+        tx_message = struct.pack(">BBHH", self.station_address, fn_code, start_register, read_length)
+        rx_message = self.send_recieve(tx_message, read_byte_length=9)
+
+        water_level_inches = round(int.from_bytes(rx_message[3:7], byteorder="big") / 1000, 1)
+        return water_level_inches
+
+    def send_recieve(self, tx_message: bytes, read_byte_length: int=7, retry: int=10) -> bytes:
+        """
+        CRC16 Tx and send message
+        """
+        def message():
             self.serial.write(tx_message + CLAMS.crc16(tx_message))
             time.sleep(300e-3)  # Sleep for 300ms per MNU specification
             rx_packet = self.serial.read(size=read_byte_length)
             return rx_packet[:-2], rx_packet[-2:]
 
         while retry:
-            rx_message, rx_crc = send_recieve()
+            rx_message, rx_crc = message()
             if rx_crc == CLAMS.crc16(rx_message):
                 return rx_message
             retry -= 1
-        raise AssertionError(f"Reply message failed CRC: {(rx_message + rx_crc).hex().upper()}")
+        raise TimeoutError(f"Message: {(rx_message + rx_crc).hex().upper()}")
 
     @classmethod
     def crc16(cls, message: bytes) -> bytes:
@@ -124,8 +146,32 @@ class CLAMS:
         return int.to_bytes(crc, 2, byteorder="big")
 
 
-if __name__ == "__main__":
-    clam = CLAMS("/dev/ttyUSB0")
+def main() -> None:
+    clam = CLAMS(com_port="/dev/ttyUSB0", station_name="JordanCreek")
 
+    water_level_guage = Gauge(f"CLAMS_{clam.station_name}_water_level_inches", "Water level in inches")
+    flow_rate_guage = Gauge(f"CLAMS_{clam.station_name}_flow_rate_cfps", "Flow rate in cubic feet per second")
+
+    x = [0, 0.2, 0.4, 0.8, 1.6, 3, 6, 9, 10]
+    y = [0, 6.8, 21.2, 65, 194.26, 503.4, 1350, 2324, 2664]
+    calc_flow_rate = interpolate.interp1d(x, y)
+
+    start_http_server(8000)  # start Prometheus endpoint
+
+    print(f"Running CLAMS")
     while True:
-        print(clam.read_mm())
+        try:
+            water_level_in = clam.read_water_level_calculated()
+            
+            water_level_guage.set(water_level_in)
+            flow_rate_guage.set(calc_flow_rate(round(water_level_in / 12, 2)))
+
+            time.sleep(1)
+        except Exception as e:
+             print(e)
+
+
+if __name__ == "__main__":
+    main()
+
+# TODO Scan settings on load to get dec places and settings
